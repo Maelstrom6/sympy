@@ -1428,11 +1428,11 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         if isinstance(n, Symbol):
             raise NotImplementedError("Cannot yet find Ft for symbolic sized transition matrix.")
 
-        is_, js_ = (list(range(n)), list(range(n)))  # the i's and j's to loop through
+        js_ = list(range(n))  # the columns to loop through
         calc_i_ne_j = True  # calculate the off-diagonals
         calc_i_eq_j = True  # calculate the diagonals
         if (i is not None) and (j is not None):
-            is_, js_ = ([i], [j])
+            js_ = [j]
             if i == j:
                 calc_i_ne_j = False
             else:
@@ -1443,6 +1443,7 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         # if i != j
         if calc_i_ne_j:
             for j in js_:
+
                 P0 = Matrix(P)
                 P0[0:n, j] = zeros(rows=n, cols=1)
                 F = P0**(t-1)*P
