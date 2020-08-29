@@ -959,9 +959,9 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         for i in range(1, n + 1):
             temp_Pn = temp_Pn * trans_probs
             for diag in range(n):
-                if (periods[diag] is -1) and (temp_Pn[diag, diag] != 0):
+                if (periods[diag] == -1) and (temp_Pn[diag, diag] != 0):
                     periods[diag] = i
-                elif (periods[diag] is not -1) and (temp_Pn[diag, diag] != 0) and (
+                elif (periods[diag] != -1) and (temp_Pn[diag, diag] != 0) and (
                         i % periods[diag] != 0):
                     periods[diag] = 1
 
