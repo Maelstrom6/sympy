@@ -1429,7 +1429,7 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         Examples
         ========
         >>> from sympy.stats import DiscreteMarkovChain
-        >>> from sympy import Matrix, S, symbols, assuming, Q
+        >>> from sympy import Matrix, S, symbols
 
         The following can be compared with the example from the References
 
