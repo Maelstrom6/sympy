@@ -830,7 +830,7 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         ==========
         p0
             The inital state vector as a row Matrix. This
-            is only needed for irreducible aperioidic
+            is only needed for reducible or perioidic
             Markov Chains. If None is given, it defaults
             to ``1/n`` for each of the ``n`` states.
 
@@ -1254,7 +1254,9 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
                 Q[row, col] = limit_seq(Q[row, col], _n)
         return M*B*Q
 
-    def exit_probability_matrix(self):
+    # Change to exit_probability_matrix in the future.
+    # Typo in    `probabilities` for backwards compatibility.
+    def absorbing_probabilites(self):
         """
         The exit probability matrix. The element :math:`e_{ij}` in E is the
         probability that, starting in state i, the process
@@ -1278,7 +1280,7 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         ...             [S(2)/3, S(1)/3, 0, 0],
         ...             [0, S(1)/2, S(1)/2, 0]])
         >>> X = DiscreteMarkovChain('X', trans_probs=T)
-        >>> X.exit_probability_matrix()
+        >>> X.absorbing_probabilites()
         Matrix([
         [2/3, 1/3],
         [1/3, 2/3]])
@@ -1649,9 +1651,7 @@ class BernoulliProcess(DiscreteTimeStochasticProcess):
     >>> P(Eq(B[1], 0) & Eq(B[2], 1) & Eq(B[3], 0) & Eq(B[4], 1)).round(2)
     0.04
     >>> B.joint_distribution(B[1], B[2])
-    JointDistributionHandmade(Lambda((B[1], B[2]), Piecewise((0.7, Eq(B[1], 1)),
-    (0.3, Eq(B[1], 0)), (0, True))*Piecewise((0.7, Eq(B[2], 1)), (0.3, Eq(B[2], 0)),
-    (0, True))))
+    JointDistributionHandmade(Lambda((B[1], B[2]), Piecewise((0.7, Eq(B[1], 1)), (0.3, Eq(B[1], 0)), (0, True))*Piecewise((0.7, Eq(B[2], 1)), (0.3, Eq(B[2], 0)), (0, True))))
     >>> E(2*B[1] + B[2]).round(2)
     2.10
     >>> P(B[1] < 1).round(2)
