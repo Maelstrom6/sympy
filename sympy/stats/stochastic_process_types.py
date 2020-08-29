@@ -743,6 +743,53 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
             return None  # cannot be known
         return len(self.communication_classes()) == 1
 
+
+    def _transient2transient(self):
+        """
+        Computes the one step probabilities of transient
+        states to transient states. Used in finding
+        fundamental matrix, absorbing probabilities.
+
+        This will be depreciated in the future.
+        """
+        trans_probs = self.transition_probabilities
+        if not isinstance(trans_probs, ImmutableMatrix):
+            return None
+
+        m = trans_probs.shape[0]
+        trans_states = [i for i in range(m) if trans_probs[i, i] != 1]
+        t2t = [[trans_probs[si, sj] for sj in trans_states] for si in trans_states]
+
+        return ImmutableMatrix(t2t)
+
+    def _transient2absorbing(self):
+        """
+        Computes the one step probabilities of transient
+        states to absorbing states. Used in finding
+        fundamental matrix, absorbing probabilities.
+
+        This will be depreciated in the future.
+        """
+        trans_probs = self.transition_probabilities
+        if not isinstance(trans_probs, ImmutableMatrix):
+            return None
+
+        m, trans_states, absorb_states = \
+            trans_probs.shape[0], [], []
+        for i in range(m):
+            if trans_probs[i, i] == 1:
+                absorb_states.append(i)
+            else:
+                trans_states.append(i)
+
+        if not absorb_states or not trans_states:
+            return None
+
+        t2a = [[trans_probs[si, sj] for sj in absorb_states]
+               for si in trans_states]
+
+        return ImmutableMatrix(t2a)
+
     def stationary_distribution(self):
         """
         The stationary distribution is a row vector, p, solves p = pP,
@@ -818,6 +865,12 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         """
         The limiting distribution is the row vector
         equal to :math:`lim_{t \\rightarrow \\infty} p^{(n)}`.
+        This property has been updated to a function.
+        If you are exeriencing errors with old code,
+        instead of ``X.limiting_distribution`` try
+        ``X.limiting_distribution()`` instead. This was
+        chosen to match ``ContinuousMarkovChain`` and
+        to allow the argument ``p0``.
 
         where
         :math:`p^{(n)}` is the marginal state probability vector at time n.
@@ -1410,9 +1463,8 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         >>> T = Matrix([[1-a, a],
         ...             [b, 1-b]])
         >>> X = DiscreteMarkovChain('X', trans_probs=T)
-        >>> t = Symbol('t', integer=True, positive=True)
-        >>> with assuming(Q.positive(t - 1)):
-        ...     X.first_passage_matrix(t)
+        >>> t = symbols('t', integer=True, positive=True)
+        >>> X.first_passage_matrix(t)
         Matrix([
         [0**(t - 1)*(1 - a) + b*(0**(t - 1)*a/(b - 1) - a*(1 - b)**(t - 1)/(b - 1)),                                                         a*(1 - a)**(t - 1)],
         [                                                        b*(1 - b)**(t - 1), 0**(t - 1)*(1 - b) + a*(0**(t - 1)*b/(a - 1) - b*(1 - a)**(t - 1)/(a - 1))]])

@@ -30,6 +30,8 @@ def test_DiscreteMarkovChain():
     raises(TypeError, lambda: DiscreteMarkovChain(1))
     raises(NotImplementedError, lambda: X(t))
 
+    raises(ValueError, lambda: sample_stochastic_process(t))
+    raises(ValueError, lambda: next(sample_stochastic_process(X)))
     # pass name and state_space
     Y = DiscreteMarkovChain("Y", [1, 2, 3])
     assert Y.transition_probabilities == None
@@ -37,12 +39,15 @@ def test_DiscreteMarkovChain():
     assert P(Eq(Y[2], 1), Eq(Y[0], 2)) == Probability(Eq(Y[2], 1), Eq(Y[0], 2))
     assert E(X[0]) == Expectation(X[0])
     raises(TypeError, lambda: DiscreteMarkovChain("Y", dict((1, 1))))
+    raises(ValueError, lambda: next(sample_stochastic_process(Y)))
 
     # pass name, state_space and transition_probabilities
     T = Matrix([[0.5, 0.2, 0.3],[0.2, 0.5, 0.3],[0.2, 0.3, 0.5]])
     TS = MatrixSymbol('T', 3, 3)
     Y = DiscreteMarkovChain("Y", [0, 1, 2], T)
     YS = DiscreteMarkovChain("Y", [0, 1, 2], TS)
+    assert YS._transient2transient() == None
+    assert YS._transient2absorbing() == None
     assert Y.joint_distribution(1, Y[2], 3) == JointDistribution(Y[1], Y[2], Y[3])
     raises(ValueError, lambda: Y.joint_distribution(Y[1].symbol, Y[2].symbol))
     assert P(Eq(Y[3], 2), Eq(Y[1], 1)).round(2) == Float(0.36, 2)
@@ -80,6 +85,7 @@ def test_DiscreteMarkovChain():
     TO3 = Matrix([[Rational(1, 4), Rational(3, 4), 0],[Rational(1, 3), Rational(1, 3), Rational(1, 3)],[0, Rational(1, 4), Rational(3, 4)]])
     Y2 = DiscreteMarkovChain('Y', trans_probs=TO2)
     Y3 = DiscreteMarkovChain('Y', trans_probs=TO3)
+    assert Y3._transient2absorbing() == None
     assert Y2.is_absorbing_chain() == True
     assert Y3.is_absorbing_chain() == False
     TO4 = Matrix([[Rational(1, 5), Rational(2, 5), Rational(2, 5)], [Rational(1, 10), S.Half, Rational(2, 5)], [Rational(3, 5), Rational(3, 10), Rational(1, 10)]])
@@ -92,6 +98,8 @@ def test_DiscreteMarkovChain():
     assert Y5.limiting_distribution()(w, TO4).doit() == True
     TO6 = Matrix([[S.One, 0, 0, 0, 0],[S.Half, 0, S.Half, 0, 0],[0, S.Half, 0, S.Half, 0], [0, 0, S.Half, 0, S.Half], [0, 0, 0, 0, 1]])
     Y6 = DiscreteMarkovChain('Y', trans_probs=TO6)
+    assert Y6._transient2absorbing() == ImmutableMatrix([[S.Half, 0], [0, 0], [0, S.Half]])
+    assert Y6._transient2transient() == ImmutableMatrix([[0, S.Half, 0], [S.Half, 0, S.Half], [0, S.Half, 0]])
     assert Y6.fundamental_matrix() == ImmutableMatrix([[Rational(3, 2), S.One, S.Half], [S.One, S(2), S.One], [S.Half, S.One, Rational(3, 2)]])
     assert Y6.absorbing_probabilites() == ImmutableMatrix([[Rational(3, 4), Rational(1, 4)], [S.Half, S.Half], [Rational(1, 4), Rational(3, 4)]])
 
