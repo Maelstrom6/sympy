@@ -2,12 +2,11 @@ from __future__ import print_function, division
 import random
 
 import itertools
-from typing import List, Any, Union
 
 from sympy import (Matrix, MatrixSymbol, S, Indexed, Basic,
                    Set, And, Eq, FiniteSet, ImmutableMatrix,
                    Lambda, Mul, Dummy, IndexedBase, Add, Interval, oo,
-                   linsolve, eye, Or, Not, Intersection, factorial, Contains,
+                   linsolve, Or, Not, Intersection, factorial, Contains,
                    Union, Expr, Function, exp, cacheit, sqrt, pi, gamma,
                    Ge, Piecewise, Symbol, NonSquareMatrixError, EmptySet,
                    ConditionSet, limit_seq, zeros, ones, Identity)
@@ -582,7 +581,6 @@ class MarkovProcess(StochasticProcess):
         raise NotImplementedError("Mechanism for handling (%s, %s) queries hasn't been "
                                 "implemented yet."%(expr, condition))
 
-# TODO: remove zombie code
 # TODO: add tests
 """
 Errors with existing code:
@@ -649,7 +647,6 @@ class CommunicationClass:
         """Checks if two communication classes have the same states"""
         self.states.sort()
         other.states.sort()
-
         return self.states == other.states
 
     def __repr__(self):
@@ -800,12 +797,9 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         if isinstance(trans_probs, MatrixSymbol) or isinstance(n, Symbol):
             wm = MatrixSymbol('wm', 1, n)
             return ConditionSet(wm, Eq(wm*trans_probs, wm))  # and wm must be row stochastic
-            # return Lambda((wm, trans_probs), Eq(wm*trans_probs, wm))
 
         # numeric matrix version
         a = (trans_probs - Identity(n)).T
-        # a = a.row_del(0)
-        # a = a.row_insert(0, ones(rows=1, cols=n))
         a[0, 0:n] = ones(rows=1, cols=n)
 
         b = zeros(rows=n, cols=1)
@@ -903,15 +897,6 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         if isinstance(trans_probs, MatrixSymbol):
             raise NotImplementedError("Limits on MatrixSymbol is not implemented.")
 
-        # setting p0 values to symbols created many NotImplementedErrors
-        #
-        # p0 = Matrix([[S(1) / n] * n])
-        # remainder = 1
-        # for i in range(n-1):
-        #     tau = Dummy("tau"+str(i), positive=True)
-        #     p0[0, i] = tau
-        #     remainder -= tau
-        # p0[0, n-1] = remainder
         if p0 is None:
             p0 = Matrix([[S(1) / n] * n])
 
@@ -919,13 +904,10 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         pn = p0*Matrix(trans_probs) ** _n
         for row in range(pn.shape[0]):
             for col in range(pn.shape[1]):
-                try:  # try to limit pn but it often does not work
+                try:  # try to limit pn but it sometimes does not work
                     pn[row, col] = limit_seq(pn[row, col], _n)
                 except NotImplementedError:
                     pass
-                    # maybe return some kind of piecewise for
-                    # possible multiplicities of _n instead.
-                    # eg. mod(_n, k) == 0, 1, 2, ..., k-1
         return pn
 
     def communication_classes(self):
@@ -1441,7 +1423,6 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         .. [1] https://scholar.uwindsor.ca/cgi/viewcontent.cgi?article=1125&context=major-papers
         .. [2] http://maths.dur.ac.uk/stats/courses/ProbMC2H/_files/handouts/1516MarkovChains2H.pdf
         """
-        #
         P = self.transition_probabilities
         n = self.num_states
         if isinstance(n, Symbol):
@@ -1459,18 +1440,12 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
 
         Ft = zeros(rows=n, cols=n)  # empty matrix
 
-        # for i != j
+        # if i != j
         if calc_i_ne_j:
             for j in js_:
                 P0 = Matrix(P)
-                # P0.col_del(j)
-                # P0 = P0.col_insert(j, Matrix([[0]]*n))
                 P0[0:n, j] = zeros(rows=n, cols=1)
-
                 F = P0**(t-1)*P
-
-                # Ft.col_del(j)
-                # Ft = Ft.col_insert(j, F[0:n, j])
                 Ft[0:n, j] = F[0:n, j]
 
         # if i == j
