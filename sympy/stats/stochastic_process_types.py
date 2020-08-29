@@ -796,10 +796,12 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         # matrix symbol version
         if isinstance(trans_probs, MatrixSymbol) or isinstance(n, Symbol):
             wm = MatrixSymbol('wm', 1, n)
-            return ConditionSet(wm, Eq(wm*trans_probs, wm))  # and wm must be row stochastic
+            # the following throws an error when checking `w in set.subs(T_symbol, T_numeric)`
+            # return ConditionSet(wm, Eq(wm*trans_probs, wm))  # and wm must be row stochastic
+            return Lambda((wm, trans_probs), Eq(wm*trans_probs, wm))
 
         # numeric matrix version
-        a = (trans_probs - Identity(n)).T
+        a = Matrix(trans_probs - Identity(n)).T
         a[0, 0:n] = ones(rows=1, cols=n)
 
         b = zeros(rows=n, cols=1)
@@ -871,6 +873,11 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         ========
         sympy.stats.DiscreteMarkovChain.stationary_distribution
         """
+        trans_probs = self.transition_probabilities
+        n = self.num_states
+        if isinstance(trans_probs, MatrixSymbol) or isinstance(n, Symbol):
+            return self.stationary_distribution()
+
         comm_classes = self.communication_classes()
 
         # if irreducible and aperiodic
@@ -889,10 +896,8 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         # It would depend on the time 0 marginal
         # state probability vector and we choose it
         # to simply be uniform.
-        trans_probs = self.transition_probabilities
         if trans_probs is None:
             return None
-        n = self.num_states
 
         if isinstance(trans_probs, MatrixSymbol):
             raise NotImplementedError("Limits on MatrixSymbol is not implemented.")
@@ -1369,7 +1374,7 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         Examples
         ========
         >>> from sympy.stats import DiscreteMarkovChain
-        >>> from sympy import Matrix, S, symbols
+        >>> from sympy import Matrix, S, symbols, assuming, Q
 
         The following can be compared with the example from the References
 
@@ -1385,7 +1390,8 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
 
         The general version is the following. We restate ``T`` to floats
         so that an underlying diagonalization is done numerically. This
-        is desired since this method is slow symbolically.
+        is desired since this method is slow symbolically. The ``0**(t-1)``
+        is 1 when t=1 and 0 when t>1.
 
         >>> T = Matrix([[0.6, 0.4],
         ...             [0.3, 0.7]])
@@ -1393,20 +1399,21 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         >>> t = symbols('t', integer=True, positive=True)
         >>> X.first_passage_matrix(t)
         Matrix([
-        [0.171428571428571*0.7**(t - 1), 0.4*0.6**(t - 1)],
-        [              0.3*0.7**(t - 1), 0.2*0.6**(t - 1)]])
+        [0.428571428571428*0**(t - 1) + 0.171428571428571*0.7**(t - 1),                  0.4*0.6**(t - 1)],
+        [                                             0.3*0.7**(t - 1), 0.5*0**(t - 1) + 0.2*0.6**(t - 1)]])
 
-        The general 2 state model
+        The general 2 state model for t > 1
 
         >>> a, b = symbols('a b', positive=True)
         >>> T = Matrix([[1-a, a],
         ...             [b, 1-b]])
         >>> X = DiscreteMarkovChain('X', trans_probs=T)
         >>> t = Symbol('t', integer=True, positive=True)
-        >>> X.first_passage_matrix(t)
+        >>> with assuming(Q.positive(t - 1)):
+        ...     X.first_passage_matrix(t)
         Matrix([
-        [-a*b*(1 - b)**(t - 1)/(b - 1),            a*(1 - a)**(t - 1)],
-        [           b*(1 - b)**(t - 1), -a*b*(1 - a)**(t - 1)/(a - 1)]])
+        [0**(t - 1)*(1 - a) + b*(0**(t - 1)*a/(b - 1) - a*(1 - b)**(t - 1)/(b - 1)),                                                         a*(1 - a)**(t - 1)],
+        [                                                        b*(1 - b)**(t - 1), 0**(t - 1)*(1 - b) + a*(0**(t - 1)*b/(a - 1) - b*(1 - a)**(t - 1)/(a - 1))]])
 
         Specify i, j for quicker evauluation
 
@@ -1469,8 +1476,8 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
                 Ft[j, j] = F[n+j, j]
 
         # there seem to be these popping up along the diagonals
-        if isinstance(t, Symbol):
-            Ft = Ft.replace(0**(t - 1), 0)
+        # if isinstance(t, Symbol):
+            # Ft = Ft.replace(0**(t - 1), 0)
 
         if (i is not None) and (j is not None):
             return Ft[i, j]
