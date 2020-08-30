@@ -9,7 +9,7 @@ from sympy import (Matrix, MatrixSymbol, S, Indexed, Basic,
                    linsolve, Or, Not, Intersection, factorial, Contains,
                    Union, Expr, Function, exp, cacheit, sqrt, pi, gamma,
                    Ge, Piecewise, Symbol, NonSquareMatrixError, EmptySet,
-                   ConditionSet, limit_seq, zeros, ones, Identity)
+                   Range, limit_seq, zeros, ones, Identity, FunctionMatrix)
 from sympy.core.relational import Relational
 from sympy.logic.boolalg import Boolean
 from sympy.stats.joint_rv import JointDistribution
@@ -95,7 +95,7 @@ def _sym_sympify(arg):
         return _sympify(arg)
 
 def _matrix_checks(matrix):
-    if not isinstance(matrix, (Matrix, MatrixSymbol, ImmutableMatrix)):
+    if not isinstance(matrix, (Matrix, MatrixSymbol, ImmutableMatrix, FunctionMatrix)):
         raise TypeError("Transition probabilities either should "
                             "be a Matrix or a MatrixSymbol.")
     if matrix.shape[0] != matrix.shape[1]:
@@ -424,7 +424,7 @@ class MarkovProcess(StochasticProcess):
 
             min_key_rv = None
             for grv in grvs:
-                if grv.key <= rv.key:
+                if grv.key <= rv.key:  # TODO: remove. Knowledge of the future does give knowledge of the present
                     min_key_rv = grv
             if min_key_rv == None:
                 return Probability(condition)
@@ -703,14 +703,17 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
     def __new__(cls, sym, state_space=S.Reals, trans_probs=None):
         sym = _symbol_converter(sym)
 
+        # maybe make trans_probs a MatrixSymbol if it is None
         if trans_probs is not None:
             trans_probs = _matrix_checks(trans_probs)
 
         if (state_space is S.Reals) and (trans_probs is not None):
             # handle symbolic-sized matrix
-            s = Dummy('s')
             n = trans_probs.shape[0]
-            state_space = ConditionSet(s, s < n, S.Naturals0)
+            if isinstance(n, Symbol):
+                state_space = Range(0, n)
+            else:
+                state_space = FiniteSet(*Range(0, n))
         state_space = _set_converter(state_space)
 
         return Basic.__new__(cls, sym, state_space, trans_probs)
@@ -728,9 +731,8 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         """
         The number of states in the Markov Chain. Can be symbolic.
         """
-        # if state_space was not specified,
-        # but if transition matrix is not specified, this will not work
-        return self.transition_probabilities.shape[0]
+        return self.transition_probabilities.shape[0] \
+            if self.transition_probabilities is not None else None
 
     @property
     def is_irreducible(self):
@@ -833,7 +835,7 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
 
         See Also
         ========
-        sympy.stats.DiscreteMarkovChain.limiting_distribution
+        sympy.stats.stochastic_processes_types.DiscreteMarkovChain.limiting_distribution
         """
         trans_probs = self.transition_probabilities
         if trans_probs is None:
@@ -845,6 +847,8 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
             wm = MatrixSymbol('wm', 1, n)
             # the following throws an error when checking `w in set.subs(T_symbol, T_numeric)`
             # return ConditionSet(wm, Eq(wm*trans_probs, wm))  # and wm must be row stochastic
+            if isinstance(trans_probs, FunctionMatrix):
+                return Lambda(wm, Eq(wm * trans_probs, wm))
             return Lambda((wm, trans_probs), Eq(wm*trans_probs, wm))
 
         # numeric matrix version
@@ -924,10 +928,13 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
 
         See Also
         ========
-        sympy.stats.DiscreteMarkovChain.stationary_distribution
+        sympy.stats.stochastic_processes_types.DiscreteMarkovChain.stationary_distribution
         """
         trans_probs = self.transition_probabilities
         n = self.num_states
+        if (trans_probs is None) or (n is None):
+            return None
+
         if isinstance(trans_probs, MatrixSymbol) or isinstance(n, Symbol):
             return self.stationary_distribution()
 
@@ -1001,13 +1008,11 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         large (about 2^30). This may cause memory or overflow errors.
         Replacing I with 0.1*I in the formula could slow this process
         but it should not be necessary for most uses.
-
-
         """
         trans_probs = self.transition_probabilities
-        if trans_probs is None:
-            return None
         n = self.num_states
+        if (trans_probs is None) or (n is None):
+            return None
 
         if isinstance(trans_probs, MatrixSymbol) or isinstance(n, Symbol):
             raise NotImplementedError("The transient and recurrent states cannot be determined.")
@@ -1111,9 +1116,9 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         sympy.stats.DiscreteMarkovChain.decompose
         """
         trans_probs = self.transition_probabilities
-        if trans_probs is None:
-            return None
         n = self.num_states
+        if (trans_probs is None) or (n is None):
+            return None
 
         if isinstance(trans_probs, MatrixSymbol) or isinstance(n, Symbol):
             raise NotImplementedError("The transient and recurrent states cannot be determined.")
@@ -1328,10 +1333,10 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         The recurrent states are not absorbing since they
         interact with one another.
 
-        >>> T = Matrix([[S(1)/2, S(1)/2, 0, 0],
-        ...             [S(4)/5, S(1)/5, 0, 0],
-        ...             [S(2)/3, S(1)/3, 0, 0],
-        ...             [0, S(1)/2, S(1)/2, 0]])
+        >>> T = Matrix([[S(1)/2, S(1)/2, 0, 0],  # recurrent
+        ...             [S(4)/5, S(1)/5, 0, 0],  # recurrent
+        ...             [S(2)/3, S(1)/3, 0, 0],  # transient
+        ...             [0, S(1)/2, S(1)/2, 0]])  # transient
         >>> X = DiscreteMarkovChain('X', trans_probs=T)
         >>> X.absorbing_probabilites()
         Matrix([
@@ -1381,7 +1386,9 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         Notice how the first element, the number of
         expected revisits to state 2 given that the
         process started in state 2 is 0 since it must
-        leave the transient states.
+        leave the transient states immediatley. The last
+        element is 1/2 since the process either stays
+        0 or 1 time steps in the transient states.
 
         References
         ==========
