@@ -97,6 +97,10 @@ def test_DiscreteMarkovChain():
     assert Y3._transient2absorbing() == None
     assert Y2.is_absorbing_chain() == True
     assert Y3.is_absorbing_chain() == False
+
+    assert not Y2.is_irreducible
+    assert Y3.is_irreducible
+
     p = Y2.stationary_distribution()
     l = Y2.limiting_distribution()
     assert p * TO2 == p == l
@@ -124,6 +128,12 @@ def test_DiscreteMarkovChain():
     assert Y3.first_passage_matrix(1) == Y3.transition_probabilities
     assert Y3.first_passage_matrix(2) == Matrix([[S(1)/4, S(3)/16, S(1)/4], [S(1)/9, S(1)/3, S(1)/9], [S(1)/12, S(3)/16, S(1)/12]])
 
+    assert Y2.first_passage_matrix(2, 2, 1) == S(3)/16
+    assert Y2.first_passage_matrix(2, 1, 1) == S(1)/12
+    assert Y3.first_passage_matrix(2, 2, 1) == S(3)/16
+    assert Y3.first_passage_matrix(2, 1, 1) == S(1)/3
+    assert (Y2.first_passage_matrix(t, 1, 2) - 3**-t).simplify() == 0
+
     TO4 = Matrix([[Rational(1, 5), Rational(2, 5), Rational(2, 5)], [Rational(1, 10), S.Half, Rational(2, 5)], [Rational(3, 5), Rational(3, 10), Rational(1, 10)]])
     Y4 = DiscreteMarkovChain('Y', trans_probs=TO4)
     w = ImmutableMatrix([[Rational(11, 39), Rational(16, 39), Rational(4, 13)]])
@@ -145,6 +155,9 @@ def test_DiscreteMarkovChain():
     Y7 = DiscreteMarkovChain('Y', trans_probs=TO7)
     assert Y7.state_space == Range(0, n)
     Y7.stationary_distribution()
+    raises(NotImplementedError, lambda: Y7.communication_classes())
+    raises(NotImplementedError, lambda: Y7.canonical_form())
+    raises(NotImplementedError, lambda: Y7.decompose())
 
     # periodic chain
     TO8 = Matrix([[0, 1, 0, 0], [1, 0, 0, 0], [S.Half, 0, S.Half, 0], [0, 0, S.Half, S.Half]])
