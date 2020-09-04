@@ -9,7 +9,7 @@ from sympy import (Matrix, MatrixSymbol, S, Indexed, Basic, ones, zeros, Identit
                    linsolve, eye, Or, Not, Intersection, factorial, Contains,
                    Union, Expr, Function, exp, cacheit, sqrt, pi, gamma,
                    Ge, Piecewise, Symbol, NonSquareMatrixError, EmptySet,
-                   OneMatrix, ConditionSet)
+                   ConditionSet)
 from sympy.core.relational import Relational
 from sympy.logic.boolalg import Boolean
 from sympy.stats.joint_rv import JointDistribution
