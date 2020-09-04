@@ -8,7 +8,8 @@ from sympy import (Matrix, MatrixSymbol, S, Indexed, Basic, ones, zeros, Identit
                    Lambda, Mul, Dummy, IndexedBase, Add, Interval, oo,
                    linsolve, eye, Or, Not, Intersection, factorial, Contains,
                    Union, Expr, Function, exp, cacheit, sqrt, pi, gamma,
-                   Ge, Piecewise, Symbol, NonSquareMatrixError, EmptySet)
+                   Ge, Piecewise, Symbol, NonSquareMatrixError, EmptySet,
+                   OneMatrix, ConditionSet)
 from sympy.core.relational import Relational
 from sympy.logic.boolalg import Boolean
 from sympy.stats.joint_rv import JointDistribution
@@ -680,7 +681,7 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
 
         return ImmutableMatrix(t2a)
 
-    def stationary_distribution(self):
+    def stationary_distribution(self, condition_set=False):
         """
         The stationary distribution is a row vector, p, solves p = pP,
         is row stochastic and each element in p must be nonnegative.
@@ -692,6 +693,14 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         have at least one stationary distribution. In addition, if
         a finite time-homogeneous Markov Chain is irreducible, the
         stationary distribution is unique.
+
+        Parameters
+        ==========
+
+        condition_set : bool
+            If the has symbolic sizes or transition matrices,
+            it will return a Lambda if False and return a
+            ConditionSet if True.
 
         Examples
         ========
@@ -739,12 +748,13 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         # this if block will not be needed
         if (not isinstance(_sympify(n), Integer)) or isinstance(trans_probs, MatrixSymbol):  # TODO: Change this to `self._is_numeric`
             wm = MatrixSymbol('wm', 1, n)
-            if isinstance(trans_probs, FunctionMatrix):
-                return Lambda(wm, Eq(wm * trans_probs, wm))
-            return Lambda((wm, trans_probs), Eq(wm * trans_probs, wm))
-        # still would be preferable to have something like
-        # ConditionSet(wm, Eq(wm*trans_probs, wm))
-        # this would cover every possible Matrix that trans_probs could be
+            if condition_set:
+                return ConditionSet(wm, And(Eq(wm*trans_probs, wm), Eq(sum(wm), 1)))
+            else:
+                if isinstance(trans_probs, FunctionMatrix):
+                    return Lambda(wm, Eq(wm * trans_probs, wm))
+                return Lambda((wm, trans_probs), Eq(wm * trans_probs, wm))
+
 
         # numeric matrix version
         # one day...

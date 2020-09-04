@@ -193,7 +193,7 @@ class ConditionSet(Set):
         try:
             return And(
                 Contains(other, self.base_set),
-                Lambda((self.sym,), self.condition)(other))
+                Lambda((self.sym,), self.condition)(other).doit())
         except TypeError:
             return Contains(other, self, evaluate=False)
 
