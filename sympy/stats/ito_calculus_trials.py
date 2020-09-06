@@ -582,11 +582,12 @@ def ito_integrate(*args, **kwargs):
         return integral.func(*new_args)
 
 
-from sympy import pdsolve, dsolve, solve
+from sympy import pdsolve, dsolve, solve, latex
 
 
 def ito_solve(eq, Xt=None, hint='default', **kwargs):
     # print(ito_solve(Eq(d(g, t), mu * d(t) + sigma * d(W(t), t))))
+    # print(ito_solve(Eq(d(g, t), (mu + sigma ** 2 / 2) * g * d(t) + sigma * g * d(W(t), t))))
     # https://www.researchgate.net/publication/45267258_Algorithmic_Solution_of_Stochastic_Differential_Equations
     # with m=1 and d=1
     prep = kwargs.pop('prep', True)
@@ -648,7 +649,7 @@ def ito_solve(eq, Xt=None, hint='default', **kwargs):
         return ito_solve_timeless(Xt, Wt_ris, Wt_sym, drift, diffusion)
 
     Xt_func = Function('Xt')
-    alpha_t = Function('alpha', real=True)(t)
+    alpha_t = Function('alpha', positive=True)(t)
     beta_Wt = Function('beta', real=True)(Wt_sym)
     alpha_0, beta_0 = symbols('alpha_0 beta_0', real=True)
     # alpha_t, beta_Wt = symbols('alpha_t beta_Wt', real=True)
@@ -659,26 +660,41 @@ def ito_solve(eq, Xt=None, hint='default', **kwargs):
     Xt_alpha = dsolve(Xt_func(Wt_sym).diff(Wt_sym) + diffusion.replace(Xt_sym, Xt_func(Wt_sym)),
                       Xt_func(Wt_sym)).rhs.subs('C1', alpha_t)
 
-    print(solve(Eq(Xt_alpha.subs(alpha_t, alpha_0).subs(Wt_sym, 0).subs(t, 0), X0), alpha_0))
-    print(Xt_alpha.diff(Wt_sym))
+    # print(solve(Eq(Xt_alpha.subs(alpha_t, alpha_0).subs(Wt_sym, 0).subs(t, 0), X0), alpha_0))
 
     half_ddx_squared = Xt_alpha.diff(Wt_sym, 2) / 2
     # Xt_beta = dsolve(Xt_func(t).diff(t) + half_ddx_squared + drift.replace(Xt_sym, Xt_func(t)),
     #        Xt_func(t), ics={Xt_func(0): beta_0}).rhs.subs(beta_0, beta_Wt)
     Xt_beta = dsolve(Xt_func(t).diff(t) + half_ddx_squared + drift.replace(Xt_sym, Xt_func(t)),
-                     Xt_func(t)).rhs.subs('C1', beta_Wt)
+                     Xt_func(t)).rhs.subs('C1', beta_Wt)  # X0
 
     # we need to now find alpha(t) and beta(Wt) by noting that Xt_alpha == Xt_beta
+    # we could try values for them maybe.
 
-    print(Xt_alpha.simplify())
-    print(Xt_beta.simplify())
+    print("Xt_alpha", Xt_alpha.simplify())
+    print("Xt_beta", Xt_beta.simplify())
 
-    alpha_t_star = dsolve(Eq(Xt_alpha.diff(t), Xt_beta.diff(t)),
-                          alpha_t).rhs.subs('C1', X0)
+    # solve for an unsimplifiable integral
+    integral = Xt_beta.atoms(Integral)
+    if len(integral) != 0:
+        integral = integral.pop()
+        i = symbols('i', real=True)
+        rhs = solve(Eq(Xt_alpha, Xt_beta.replace(integral, i)), i)[0]
+        equation = Eq(rhs.diff(t)/integral.diff(t), 1).simplify()
+    else:
+        equation = Eq(Xt_alpha.diff(t), Xt_beta.diff(t))
 
-    print(alpha_t_star)
+    print(latex(equation))
+    alpha_t_star = dsolve(equation, alpha_t).rhs.subs('C1', X0)
+
+    print(latex(alpha_t_star))
 
     solution = Xt_alpha.subs(alpha_t, alpha_t_star)
+    # beta(Wt) should have naturally disappeared.
+    # If not, we got an incorrect solution.
+    # We must retry with some kind of transform of Xt
+    if beta_Wt in solution.atoms(Function):
+        raise NotImplementedError("Cannot find solution.")
     return Eq(Xt, solution).replace(Wt_sym, Wt_ris)
 
 
@@ -689,7 +705,7 @@ def ito_solve_timeless(Xt, Wt_ris, Wt_sym, drift, diffusion):
     return Eq(Xt, solution).replace(Wt_sym, Wt_ris)
 
 
-def itos_lemma(Xt):
+def itos_lemma(Xt, drift=None, diffusion=None):
     # eg, exp(W(t))
     # must be a function of W(t) and t
     # identify WienerProcess and t
@@ -709,8 +725,9 @@ def itos_lemma(Xt):
 a, t = symbols('a t', positive=True)
 W = WienerProcess('W')
 g = Function('g')(W(t), t)
-mu, sigma = symbols('mu sigma', real=True)
+mu, sigma, gam = symbols('mu sigma gamma', positive=True)
 
 # print(ito_solve(Eq(d(g, t), g*d(t) + g*d(W(t), t)/2)))
 print(ito_solve(Eq(d(g, t), mu * d(t) + sigma * d(W(t), t))))
-print(ito_solve(Eq(d(g, t), (0 + sigma ** 2 / 2) * g * d(t) + sigma * g * d(W(t), t))))
+print(ito_solve(Eq(d(g, t), (mu + sigma ** 2 / 2) * g * d(t) + sigma * g * d(W(t), t))))
+# print(ito_solve(Eq(d(g, t), -gam*g*d(t) + sigma*d(W(t), t))))
