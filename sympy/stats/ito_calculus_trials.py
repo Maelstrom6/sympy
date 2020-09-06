@@ -20,6 +20,7 @@ from sympy.utilities.misc import filldedent
 from collections import Counter
 from sympy.calculus.util import continuous_domain
 
+
 @is_random.register(Integral)
 def _(x):
     f = is_random(x.function)
@@ -271,8 +272,10 @@ class Differential(Expr):
             if self != other:
                 return 0
         if isinstance(other, Differential):
-            if isinstance(self.expr, RandomIndexedSymbol) and isinstance(other.expr, RandomIndexedSymbol):
-                if isinstance(self.expr.pspace.process, WienerProcess) and isinstance(other.expr.pspace.process, WienerProcess):
+            if isinstance(self.expr, RandomIndexedSymbol) and isinstance(other.expr,
+                                                                         RandomIndexedSymbol):
+                if isinstance(self.expr.pspace.process, WienerProcess) and isinstance(
+                    other.expr.pspace.process, WienerProcess):
                     return Piecewise((d(self.expr.args[0].args[0], self.variable_count),
                                       Eq(self.expr.args[0].args[0], other.expr.args[0].args[0]),
                                       (0, True)))
@@ -445,6 +448,36 @@ class Differential(Expr):
 
 
 def d(f, *symbols, **kwargs):
+    """
+
+    Parameters
+    ==========
+    f
+    symbols
+    kwargs
+
+    Returns
+    =======
+
+    Examples
+    ========
+
+    >>> from sympy.stats import WienerProcess
+    >>> from sympy import symbols
+    >>> a, t = symbols('a t', positive=True)
+    >>> W = WienerProcess('W')
+    >>> dWt = d(W(t+a) + 2, t)
+    d(W(t+a), t)
+    >>> dt = d(t + 1)
+    >>> dWt * dt
+    0
+    >>> dWt ** 2
+    d(t)
+    >>> dt ** 2
+    0
+
+
+    """
     if hasattr(f, 'differential'):
         return f.differential(*symbols, **kwargs)
     if isinstance(f, Add):
@@ -458,7 +491,8 @@ def d(f, *symbols, **kwargs):
             if result:
                 # Note: reduce is used in step of Mul as Mul is unable to
                 # handle subtypes and operation priority:
-                terms.append(reduce(lambda x, y: x * y, (args[:i] + [result] + args[i + 1:]), S.One))
+                terms.append(
+                    reduce(lambda x, y: x * y, (args[:i] + [result] + args[i + 1:]), S.One))
         return Add.fromiter(terms)
 
     kwargs.setdefault('evaluate', True)
@@ -490,7 +524,7 @@ def is_ito_function(f: Expr, Wt=None, t=None):
     FWB_measurable = True
     FW_adapted = True
     T = symbols("T", real=True, positive=True)
-    square_integrable = (integrate(f**2, (t, 0, T)) < oo is not False)  # can be None
+    square_integrable = (integrate(f ** 2, (t, 0, T)) < oo is not False)  # can be None
 
     return And(f_x_continuous, f_xx_continuous, f_t_continuous,
                FWB_measurable, FW_adapted, square_integrable)
@@ -525,8 +559,9 @@ class ItoIntegral(Integral):
             # Assume alpha is monotonic.
             x = self.alpha.free_symbols.pop()
             new_symbols = (x, self.limits[0][1], self.limits[0][2])
-            return integrate(self.function*self.alpha.diff(x), new_symbols)
+            return integrate(self.function * self.alpha.diff(x), new_symbols)
         raise NotImplementedError()
+
 
 def ito_integrate(*args, **kwargs):
     doit_flags = {
@@ -546,16 +581,136 @@ def ito_integrate(*args, **kwargs):
                     for a in integral.args]
         return integral.func(*new_args)
 
+
+from sympy import pdsolve, dsolve, solve
+
+
+def ito_solve(eq, Xt=None, hint='default', **kwargs):
+    # print(ito_solve(Eq(d(g, t), mu * d(t) + sigma * d(W(t), t))))
+    # https://www.researchgate.net/publication/45267258_Algorithmic_Solution_of_Stochastic_Differential_Equations
+    # with m=1 and d=1
+    prep = kwargs.pop('prep', True)
+    if isinstance(eq, Eq):
+        eq = eq.lhs - eq.rhs
+
+    # identify WienerProcess and t
+    Wt_ris = eq.atoms(RandomIndexedSymbol).pop()
+    t = Wt_ris.key
+    Wt_sym, dWt_sym, dt_sym, Xt_sym = symbols('Wt dWt dt Xt', real=True)
+    Wt_func = Function('W')(t)
+    dWt = d(Wt_func)  # dWt
+    dt = d(t)  # dt
+
+    # remove W(t)
+    eq = eq.replace(Wt_ris, Wt_func).replace(d(Wt_ris, t), dWt)
+    if Xt is not None:
+        func = Xt.replace(Wt_ris, Wt_func)
+
+    # remove d(x(t)) for dx and others
+    def to_symbols(e, f):
+        e = e.replace(dWt, dWt_sym).replace(Wt_func, Wt_sym).replace(dt, dt_sym)
+        if f is not None:
+            f = f.replace(Wt_func, Wt_sym)
+        else:
+            f = None
+        return e, f
+
+    def to_functions(e, f):
+        e = e.replace(Wt_sym, Wt_func).replace(dWt_sym, dWt).replace(dt_sym, dt)
+        if f is not None:
+            f = f.replace(Wt_sym, Wt_func)
+        else:
+            f = None
+        return e, f
+
+    eq, Xt = to_symbols(eq, Xt)
+
+    drift = eq.coeff(dt_sym, 1)  # f(t, X(t)) from references
+    diffusion = eq.coeff(dWt_sym, 1)  # g1(t, X(t)) from references
+
+    # adjusted from _preprocess
+    differentials = eq.atoms(Differential)
+    if not Xt:
+        funcs = set().union(*[di.atoms(AppliedUndef) for di in differentials])
+        if len(funcs) != 1:
+            raise ValueError('The function cannot be '
+                             'automatically detected for %s.' % eq)
+        Xt = funcs.pop()  # X(t)
+
+    drift = drift.replace(Xt, Xt_sym)
+    diffusion = diffusion.replace(Xt, Xt_sym)
+    print("drift", drift)
+    print("diffusion", diffusion)
+
+    # if Xt is not a function of t but only Wt
+    # runs if d(Xt) is not written in terms of Xt
+    if (diffusion.replace(Xt_sym, Xt).diff(Wt_sym) / 2 - drift.replace(Xt_sym, Xt)).simplify() == 0:
+        return ito_solve_timeless(Xt, Wt_ris, Wt_sym, drift, diffusion)
+
+    Xt_func = Function('Xt')
+    alpha_t = Function('alpha', real=True)(t)
+    beta_Wt = Function('beta', real=True)(Wt_sym)
+    alpha_0, beta_0 = symbols('alpha_0 beta_0', real=True)
+    # alpha_t, beta_Wt = symbols('alpha_t beta_Wt', real=True)
+    X0 = symbols('X_0', real=True)
+
+    # Xt_alpha = dsolve(Xt_func(Wt_sym).diff(Wt_sym) + diffusion.replace(Xt_sym, Xt_func(Wt_sym)),
+    #                   Xt_func(Wt_sym), ics={Xt_func(0): alpha_0}).rhs.subs(alpha_0, alpha_t)
+    Xt_alpha = dsolve(Xt_func(Wt_sym).diff(Wt_sym) + diffusion.replace(Xt_sym, Xt_func(Wt_sym)),
+                      Xt_func(Wt_sym)).rhs.subs('C1', alpha_t)
+
+    print(solve(Eq(Xt_alpha.subs(alpha_t, alpha_0).subs(Wt_sym, 0).subs(t, 0), X0), alpha_0))
+    print(Xt_alpha.diff(Wt_sym))
+
+    half_ddx_squared = Xt_alpha.diff(Wt_sym, 2) / 2
+    # Xt_beta = dsolve(Xt_func(t).diff(t) + half_ddx_squared + drift.replace(Xt_sym, Xt_func(t)),
+    #        Xt_func(t), ics={Xt_func(0): beta_0}).rhs.subs(beta_0, beta_Wt)
+    Xt_beta = dsolve(Xt_func(t).diff(t) + half_ddx_squared + drift.replace(Xt_sym, Xt_func(t)),
+                     Xt_func(t)).rhs.subs('C1', beta_Wt)
+
+    # we need to now find alpha(t) and beta(Wt) by noting that Xt_alpha == Xt_beta
+
+    print(Xt_alpha.simplify())
+    print(Xt_beta.simplify())
+
+    alpha_t_star = dsolve(Eq(Xt_alpha.diff(t), Xt_beta.diff(t)),
+                          alpha_t).rhs.subs('C1', X0)
+
+    print(alpha_t_star)
+
+    solution = Xt_alpha.subs(alpha_t, alpha_t_star)
+    return Eq(Xt, solution).replace(Wt_sym, Wt_ris)
+
+
+def ito_solve_timeless(Xt, Wt_ris, Wt_sym, drift, diffusion):
+    F = Function('F', real=True)  # not a function of t
+    X0 = symbols('X0', real=True)
+    solution = dsolve(F(Wt_sym).diff(Wt_sym) + diffusion, F(Wt_sym), ics={F(0): X0}).rhs
+    return Eq(Xt, solution).replace(Wt_sym, Wt_ris)
+
+
+def itos_lemma(Xt):
+    # eg, exp(W(t))
+    # must be a function of W(t) and t
+    # identify WienerProcess and t
+    Wt_ris = Xt.atoms(RandomIndexedSymbol).pop()
+    t = Wt_ris.key
+    Wt_sym, dWt_sym, dt_sym, Xt_sym = symbols('Wt dWt dt Xt', real=True)
+    Wt_func = Function('W')(t)
+    dWt = d(Wt_func)  # dWt
+    dt = d(t)  # dt
+
+    Xt_expr = Xt.replace(Wt_ris, Wt_sym)
+    drift = Xt_expr.diff(t) + Xt_expr.diff(Wt_sym, 2) / 2
+    diffusion = Xt_expr.diff(Wt_sym)
+    return Eq(d(Xt, t), drift * d(t) + diffusion * d(Wt_ris, t))
+
+
 a, t = symbols('a t', positive=True)
 W = WienerProcess('W')
-#print(ito_integrate(t**2, (W(t), 0, 1)))
+g = Function('g')(W(t), t)
+mu, sigma = symbols('mu sigma', real=True)
 
-f = W(t) + t
-print(is_ito_function(f))
-dWt = d(W(t+a) + 2, t)
-print(dWt)
-dt = d(t + 1)
-print(dWt * dt)
-print(dWt ** 2)
-print((dWt * d(-W(t) + 1, t)).doit())
-print(dt ** 2)
+# print(ito_solve(Eq(d(g, t), g*d(t) + g*d(W(t), t)/2)))
+print(ito_solve(Eq(d(g, t), mu * d(t) + sigma * d(W(t), t))))
+print(ito_solve(Eq(d(g, t), (0 + sigma ** 2 / 2) * g * d(t) + sigma * g * d(W(t), t))))
