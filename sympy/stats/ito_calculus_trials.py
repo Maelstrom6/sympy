@@ -19,6 +19,7 @@ from sympy.core.containers import Tuple
 from sympy.utilities.misc import filldedent
 from collections import Counter
 from sympy.calculus.util import continuous_domain
+from sympy.stats import *
 
 
 @is_random.register(Integral)
@@ -531,7 +532,7 @@ def is_ito_function(f: Expr, Wt=None, t=None):
 
 
 class ItoIntegral(Integral):
-    __slots__ = ('is_commutative',)
+    is_commutative = True
 
     def __new__(cls, function, symbol, **assumptions):
         if hasattr(function, '_eval_ItoIntegral'):
@@ -541,7 +542,7 @@ class ItoIntegral(Integral):
         if len(syms) != 1:
             raise ValueError("The integrator must be a monotonic function of "
                              "exactly one variable.")
-
+        symbol = sympify(symbol)
         obj = Expr.__new__(cls, function, symbol, **assumptions)
         return obj
 
@@ -598,6 +599,7 @@ def ito_solve(eq, Xt=None, hint='default', **kwargs):
     Wt_ris = eq.atoms(RandomIndexedSymbol).pop()
     t = Wt_ris.key
     Wt_sym, dWt_sym, dt_sym, Xt_sym = symbols('Wt dWt dt Xt', real=True)
+    X0 = symbols('X_0', real=True)
     Wt_func = Function('W')(t)
     dWt = d(Wt_func)  # dWt
     dt = d(t)  # dt
@@ -638,10 +640,20 @@ def ito_solve(eq, Xt=None, hint='default', **kwargs):
                              'automatically detected for %s.' % eq)
         Xt = funcs.pop()  # X(t)
 
+
+
     drift = drift.replace(Xt, Xt_sym)
     diffusion = diffusion.replace(Xt, Xt_sym)
     print("drift", drift)
     print("diffusion", diffusion)
+
+    if (Xt_sym not in drift.atoms(Symbol)) and (Xt_sym not in diffusion.atoms(Symbol)):
+        #X0 + ItoIntegral(drift.replace(Wt_sym, Wt_ris), (t, 0, t)) + ItoIntegral(diffusion.replace(Wt_sym, Wt_ris), (Wt_ris, 0, t))
+
+        solution = X0 + ItoIntegral(drift.replace(Wt_sym, Wt_ris), (t, 0, t)) + ItoIntegral(diffusion.replace(Wt_sym, Wt_ris), (Wt_ris, 0, t))
+        print(Xt)
+        print(solution.subs(Wt_sym, Wt_ris))
+        return Eq(Xt, solution).subs(Wt_sym, Wt_ris)
 
     # if Xt is not a function of t but only Wt
     # runs if d(Xt) is not written in terms of Xt
@@ -653,10 +665,10 @@ def ito_solve(eq, Xt=None, hint='default', **kwargs):
     beta_Wt = Function('beta', real=True)(Wt_sym)
     alpha_0, beta_0 = symbols('alpha_0 beta_0', real=True)
     # alpha_t, beta_Wt = symbols('alpha_t beta_Wt', real=True)
-    X0 = symbols('X_0', real=True)
 
     # Xt_alpha = dsolve(Xt_func(Wt_sym).diff(Wt_sym) + diffusion.replace(Xt_sym, Xt_func(Wt_sym)),
     #                   Xt_func(Wt_sym), ics={Xt_func(0): alpha_0}).rhs.subs(alpha_0, alpha_t)
+    print("before", Xt_func(Wt_sym).diff(Wt_sym) + diffusion.replace(Xt_sym, Xt_func(Wt_sym)))
     Xt_alpha = dsolve(Xt_func(Wt_sym).diff(Wt_sym) + diffusion.replace(Xt_sym, Xt_func(Wt_sym)),
                       Xt_func(Wt_sym)).rhs.subs('C1', alpha_t)
 
@@ -719,15 +731,25 @@ def itos_lemma(Xt, drift=None, diffusion=None):
     Xt_expr = Xt.replace(Wt_ris, Wt_sym)
     drift = Xt_expr.diff(t) + Xt_expr.diff(Wt_sym, 2) / 2
     diffusion = Xt_expr.diff(Wt_sym)
+
+    drift = drift.replace(Wt_sym, Wt_ris)
+    diffusion = diffusion.replace(Wt_sym, Wt_ris)
     return Eq(d(Xt, t), drift * d(t) + diffusion * d(Wt_ris, t))
 
 
-a, t = symbols('a t', positive=True)
+a, t = symbols('a t', positive=True, integer=True)
 W = WienerProcess('W')
 g = Function('g')(W(t), t)
 mu, sigma, gam = symbols('mu sigma gamma', positive=True)
+print((2*Normal('x', 0, 1)).simplify())
+Y = DiscreteMarkovChain('x')
 
-# print(ito_solve(Eq(d(g, t), g*d(t) + g*d(W(t), t)/2)))
+print(ito_solve(Eq(d(g, t), g*d(t) + g*d(W(t), t)/2)))
 print(ito_solve(Eq(d(g, t), mu * d(t) + sigma * d(W(t), t))))
 print(ito_solve(Eq(d(g, t), (mu + sigma ** 2 / 2) * g * d(t) + sigma * g * d(W(t), t))))
+r = (ito_solve(Eq(d(g, t), gam*exp(gam*t)*mu*d(t) + sigma*exp(gam*t)*d(W(t), t))))
+print(r)
+print(itos_lemma(r.rhs))
+Derivative
+Integral
 # print(ito_solve(Eq(d(g, t), -gam*g*d(t) + sigma*d(W(t), t))))
