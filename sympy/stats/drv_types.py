@@ -17,7 +17,7 @@ from __future__ import print_function, division
 
 from sympy import (Basic, factorial, exp, S, sympify, I, zeta, polylog, log, beta,
                    hyper, binomial, Piecewise, floor, besseli, sqrt, Sum, Dummy,
-                   Lambda, harmonic)
+                   Lambda, harmonic, Intersection, Interval)
 from sympy.stats.drv import SingleDiscreteDistribution, SingleDiscretePSpace
 from sympy.stats.rv import _value_check, is_random
 
@@ -722,6 +722,7 @@ def Zeta(name, s):
     """
     return rv(name, ZetaDistribution, s)
 
+
 #-------------------------------------------------------------------------------
 # Zipf distribution ------------------------------------------------------------
 
@@ -743,7 +744,8 @@ class ZipfDistribution(SingleDiscreteDistribution):
     def _cdf(self, k):
         s = self.s
         N = self.N
-        return Piecewise((harmonic(floor(k), s)/harmonic(N, s), k >= 1), (0, True))
+        return Piecewise((harmonic(floor(k), s)/harmonic(N, s),
+                          self.set.as_relational(k)), (0, True))
 
     def _characteristic_function(self, t):
         s = self.s
@@ -756,6 +758,12 @@ class ZipfDistribution(SingleDiscreteDistribution):
         N = self.N
         n = Dummy("n", positive=True, integer=True)
         return 1/harmonic(N, s) * Sum(exp(n*t)/n**s, (n, 1, N)).doit()
+
+    @property
+    def set(self):
+        if self.is_symbolic:
+            return Intersection(S.Naturals, Interval(0, self.N))
+        return {i for i in range(self.N)}
 
 
 def Zipf(name, s, N):

@@ -218,7 +218,7 @@ def test_precomputed_characteristic_functions():
     test_cf(Poisson('p', 5), 0, mpmath.inf)
     test_cf(YuleSimon('y', 5), 1, mpmath.inf)
     test_cf(Zeta('z', 5), 1, mpmath.inf)
-    test_cf(Zipf('z', 5, 2), 1, mpmath.inf)
+    test_cf(Zipf('z', 5, 2), 1, 2)
 
 
 def test_moment_generating_functions():
