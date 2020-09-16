@@ -17,7 +17,7 @@ from __future__ import print_function, division
 
 from sympy import (Basic, factorial, exp, S, sympify, I, zeta, polylog, log, beta,
                    hyper, binomial, Piecewise, floor, besseli, sqrt, Sum, Dummy,
-                   Lambda)
+                   Lambda, harmonic)
 from sympy.stats.drv import SingleDiscreteDistribution, SingleDiscretePSpace
 from sympy.stats.rv import _value_check, is_random
 
@@ -29,7 +29,8 @@ __all__ = ['Geometric',
 'Poisson',
 'Skellam',
 'YuleSimon',
-'Zeta'
+'Zeta',
+'Zipf'
 ]
 
 
@@ -713,5 +714,102 @@ def Zeta(name, s):
 
     .. [1] https://en.wikipedia.org/wiki/Zeta_distribution
 
+    See Also
+    ========
+
+    sympy.stats.drv_types.Zipf
+
     """
     return rv(name, ZetaDistribution, s)
+
+#-------------------------------------------------------------------------------
+# Zipf distribution ------------------------------------------------------------
+
+class ZipfDistribution(SingleDiscreteDistribution):
+    _argnames = ('s', 'N')
+    set = S.Naturals
+
+    @staticmethod
+    def check(s, N):
+        _value_check(s >= 0, 's should be greater than or equal to 0')
+        _value_check(N > 0, 'N should be greater than 0')
+
+    def pdf(self, k):
+        s = self.s
+        N = self.N
+        H_Ns = harmonic(N, s)
+        return 1 / (k**s * H_Ns)
+
+    def _cdf(self, k):
+        s = self.s
+        N = self.N
+        return Piecewise((harmonic(floor(k), s)/harmonic(N, s), k >= 1), (0, True))
+
+    def _characteristic_function(self, t):
+        s = self.s
+        N = self.N
+        n = Dummy("n", positive=True, integer=True)
+        return 1/harmonic(N, s) * Sum(exp(I*n*t)/n**s, (n, 1, N)).doit()
+
+    def _moment_generating_function(self, t):
+        s = self.s
+        N = self.N
+        n = Dummy("n", positive=True, integer=True)
+        return 1/harmonic(N, s) * Sum(exp(n*t)/n**s, (n, 1, N)).doit()
+
+
+def Zipf(name, s, N):
+    r"""
+    Create a discrete random variable with a Zeta distribution.
+
+    The density of the Zipf distribution is given by
+
+    .. math::
+        f(k) := \frac{1}{k^s H_{N,s}}
+
+    Where :math:`H_{N,s}` is the Nth generated harmonic number.
+
+    Parameters
+    ==========
+
+    s: A value greater than or equal to 0
+    N: An integer greater than 0
+
+    Returns
+    =======
+
+    RandomSymbol
+
+    Examples
+    ========
+
+    >>> from sympy.stats import Zipf, density, E, variance
+    >>> from sympy import Symbol
+
+    >>> s = 5
+    >>> N = 3
+    >>> z = Symbol("z")
+
+    >>> X = Zipf("x", s, N)
+
+    >>> density(X)(z)
+    7776/(8051*z**5)
+
+    >>> E(X)
+    8358/8051
+
+    >>> variance(X)
+    2892672/64818601
+
+    References
+    ==========
+
+    .. [1] https://en.wikipedia.org/wiki/Zipf%27s_law
+
+    See Also
+    ========
+
+    sympy.stats.drv_types.Zeta
+
+    """
+    return rv(name, ZipfDistribution, s, N)

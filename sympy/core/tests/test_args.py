@@ -1603,6 +1603,10 @@ def test_sympy__stats__drv_types__ZetaDistribution():
     from sympy.stats.drv_types import ZetaDistribution
     assert _test_args(ZetaDistribution(1.5))
 
+def test_sympy__stats__drv_types__ZipfDistribution():
+    from sympy.stats.drv_types import ZipfDistribution
+    assert _test_args(ZipfDistribution(1.5, 2))
+
 
 def test_sympy__stats__joint_rv__JointDistribution():
     from sympy.stats.joint_rv import JointDistribution

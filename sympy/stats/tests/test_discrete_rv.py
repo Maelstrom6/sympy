@@ -11,7 +11,7 @@ from sympy.stats import (P, E, variance, density, characteristic_function,
 from sympy.stats.drv_types import (PoissonDistribution, GeometricDistribution,
                                    Poisson, Geometric, Hermite, Logarithmic,
                                     NegativeBinomial, Skellam, YuleSimon, Zeta,
-                                    DiscreteRV)
+                                    Zipf, DiscreteRV)
 from sympy.stats.rv import sample
 from sympy.testing.pytest import slow, nocache_fail, raises, skip, ignore_warnings
 from sympy.external import import_module
@@ -138,6 +138,10 @@ def test_zeta():
     assert simplify(variance(x)) == (
         zeta(s) * zeta(s-2) - zeta(s-1)**2) / zeta(s)**2
 
+def test_zipf():
+    # TODO: make tests
+    pass
+
 
 @slow
 def test_sample_discrete():
@@ -214,6 +218,7 @@ def test_precomputed_characteristic_functions():
     test_cf(Poisson('p', 5), 0, mpmath.inf)
     test_cf(YuleSimon('y', 5), 1, mpmath.inf)
     test_cf(Zeta('z', 5), 1, mpmath.inf)
+    test_cf(Zipf('z', 5, 2), 1, mpmath.inf)
 
 
 def test_moment_generating_functions():
@@ -241,6 +246,10 @@ def test_moment_generating_functions():
 
     zeta_mgf = moment_generating_function(Zeta('z', 5))(t)
     assert zeta_mgf.diff(t).subs(t, 0) == pi**4/(90*zeta(5))
+
+    # TODO: do tests
+    # zipf_mgf = moment_generating_function(Zipf('z', 3, 2))(t)
+    # assert zipf_mgf.diff(t).subs(t, 0) == pi ** 4 / (90 * zeta(5))
 
 
 def test_Or():
