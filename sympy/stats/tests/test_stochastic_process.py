@@ -78,7 +78,7 @@ def test_DiscreteMarkovChain():
     T = Matrix([[0.5, 0.2, 0.3],[0.2, 0.5, 0.3],[0.2, 0.3, 0.5]])
     TS = MatrixSymbol('T', 3, 3)
     Y = DiscreteMarkovChain("Y", [0, 1, 2], T)
-    YS = DiscreteMarkovChain("Y", ['One', 'Two', 3], TS)
+    YS = DiscreteMarkovChain("Y", [0, 1, 2], TS)
     assert YS._transient2transient() == None
     assert YS._transient2absorbing() == None
     assert Y.joint_distribution(1, Y[2], 3) == JointDistribution(Y[1], Y[2], Y[3])
@@ -157,17 +157,20 @@ def test_DiscreteMarkovChain():
     raises(ValueError, lambda: DiscreteMarkovChain('X', [0, 1], T))
 
     # testing miscellaneous queries with different state space
-    X = DiscreteMarkovChain('X', ['A', 'B', 'C'], T)
-    assert P(Eq(X[1], 2) & Eq(X[2], 1) & Eq(X[3], 0),
-    Eq(P(Eq(X[1], 0)), Rational(1, 4)) & Eq(P(Eq(X[1], 1)), Rational(1, 4))) == Rational(1, 12)
-    assert P(Eq(X[2], 1) | Eq(X[2], 2), Eq(X[1], 1)) == Rational(2, 3)
-    assert P(Eq(X[2], 1) & Eq(X[2], 2), Eq(X[1], 1)) is S.Zero
-    assert P(Ne(X[2], 2), Eq(X[1], 1)) == Rational(1, 3)
+    A, B, C = symbols('A B C')
+    X = DiscreteMarkovChain('X', [A, B, C], T)
+    assert P(Ne(X[1], C) & Ne(X[1], B), Eq(X[0], C))
+    assert P(Eq(X[2], B) & Eq(X[2], C), Eq(X[1], B)) is S.Zero
+    assert P(Eq(X[1], C) & Eq(X[2], B) & Eq(X[3], A),
+    Eq(P(Eq(X[1], A)), Rational(1, 4)) & Eq(P(Eq(X[1], B)), Rational(1, 4))) == Rational(1, 12)
+    assert P(Eq(X[2], B) | Eq(X[2], C), Eq(X[1], B)) == Rational(2, 3)
+    assert P(Eq(X[2], B) & Eq(X[2], C), Eq(X[1], B)) is S.Zero
+    assert P(Ne(X[2], C), Eq(X[1], B)) == Rational(1, 3)
     a = X.state_space.args[0]
     c = X.state_space.args[2]
-    assert (E(X[1] ** 2, Eq(X[0], 1)) - (a**2/3 + 2*c**2/3)).simplify() == 0
-    assert (variance(X[1], Eq(X[0], 1)) - (2*(-a/3 + c/3)**2/3 + (2*a/3 - 2*c/3)**2/3)).simplify() == 0
-    raises(ValueError, lambda: E(X[1], Eq(X[2], 1)))
+    assert (E(X[1] ** 2, Eq(X[0], B)) - (a**2/3 + 2*c**2/3)).simplify() == 0
+    assert (variance(X[1], Eq(X[0], B)) - (2*(-a/3 + c/3)**2/3 + (2*a/3 - 2*c/3)**2/3)).simplify() == 0
+    raises(ValueError, lambda: E(X[1], Eq(X[2], B)))
 
 
 def test_sample_stochastic_process():

@@ -320,7 +320,9 @@ class StochasticStateSpaceOf(Boolean):
         else:
             state_space = _set_converter(state_space)
             state_index = state_space
-        return Basic.__new__(cls, process, state_index)
+        obj = Basic.__new__(cls, process, state_index)
+        obj.state_space = state_space  # cannot add this before object creation since this class inherits from Boolean
+        return obj
 
     process = property(lambda self: self.args[0])
     state_index = property(lambda self: self.args[1])
@@ -337,27 +339,39 @@ class MarkovProcess(StochasticProcess):
         """
         if isinstance(self, DiscreteMarkovChain):
             trans_probs = self.transition_probabilities
+            state_space = self.state_space
             state_index = self._state_index
         elif isinstance(self, ContinuousMarkovChain):
             trans_probs = self.generator_matrix
+            state_space = self.state_space
             state_index = self.state_space
         if isinstance(given_condition, And):
             gcs = given_condition.args
             given_condition = S.true
             for gc in gcs:
+                # TODO: if a TransitionMatrixOf was given but StochasticStateSpaceOf was not and it
+                #  was never given upon initialization, then the state space must not be Range(_n)
                 if isinstance(gc, TransitionMatrixOf):
                     trans_probs = gc.matrix
+                    if isinstance(state_space, Range):
+                        state_space = Tuple(*range(trans_probs.shape[0]))
+                        state_index = FiniteSet(*range(trans_probs.shape[0]))
                 if isinstance(gc, StochasticStateSpaceOf):
+                    state_space = gc.state_space
                     state_index = gc.state_index
                 if isinstance(gc, Relational):
                     given_condition = given_condition & gc
         if isinstance(given_condition, TransitionMatrixOf):
             trans_probs = given_condition.matrix
             given_condition = S.true
+            if isinstance(state_space, Range):
+                state_space = Tuple(*range(trans_probs.shape[0]))
+                state_index = FiniteSet(*range(trans_probs.shape[0]))
         if isinstance(given_condition, StochasticStateSpaceOf):
+            state_space = given_condition.state_space
             state_index = given_condition.state_index
             given_condition = S.true
-        return trans_probs, state_index, given_condition
+        return trans_probs, state_space, state_index, given_condition
 
     def _check_trans_probs(self, trans_probs, row_sum=1):
         """
@@ -402,7 +416,8 @@ class MarkovProcess(StochasticProcess):
             return (True, None, None, None)
 
         # extracting transition matrix and state space
-        trans_probs, state_index, given_condition = self._extract_information(given_condition)
+        # need state space otherwise it is lost completetly (self is not guarenteed to have the same state space)
+        trans_probs, state_space, state_index, given_condition = self._extract_information(given_condition)
 
         # given_condition does not have sufficient information
         # for computations
@@ -419,7 +434,7 @@ class MarkovProcess(StochasticProcess):
             # working out state space
             state_index = self._work_out_state_index(state_index, given_condition, trans_probs)
 
-        return is_insufficient, trans_probs, state_index, given_condition
+        return is_insufficient, trans_probs, state_space, state_index, given_condition
 
     def probability(self, condition, given_condition=None, evaluate=True, **kwargs):
         """
@@ -447,8 +462,11 @@ class MarkovProcess(StochasticProcess):
         generator matrix using GeneratorMatrixOf and state space
         using StochasticStateSpaceOf in given_condition using & or And.
         """
-        check, mat, state_index, new_given_condition = \
+        check, mat, state_space, state_index, new_given_condition = \
             self._preprocess(given_condition, evaluate)
+
+        # self might not have the same index_of due to StochasticStateSpaceOf
+        index_of = {state: i for i, state in enumerate(state_space)}
 
         if check:
             return Probability(condition, new_given_condition)
@@ -459,7 +477,15 @@ class MarkovProcess(StochasticProcess):
             trans_probs = mat
 
         if isinstance(condition, Relational):
-            rv, states = (list(condition.atoms(RandomIndexedSymbol))[0], condition.as_set())
+            left, right = condition.args
+            if isinstance(self, DiscreteMarkovChain):
+                # self will not have a valid index of if state space and trans probs weren't given in initialization
+                left = left if isinstance(left, RandomIndexedSymbol) else index_of.get(left, None)
+                right = right if isinstance(right, RandomIndexedSymbol) else index_of.get(right, None)
+                if left is None or right is None:
+                    return S.Zero
+            converted_condition = condition.func(left, right)
+            rv, states = (list(condition.atoms(RandomIndexedSymbol))[0], converted_condition.as_set())
             if isinstance(new_given_condition, And):
                 gcs = new_given_condition.args
             else:
@@ -484,8 +510,14 @@ class MarkovProcess(StochasticProcess):
                         gstate = list(gset)[0]
                         prob[gset] = p
                     else:
-                        _, gstate = (gc.lhs.key, gc.rhs) if isinstance(gc.lhs, RandomIndexedSymbol) \
-                                    else (gc.rhs.key, gc.lhs)
+                        if isinstance(self, DiscreteMarkovChain):
+                            _, gstate = (gc.lhs.key, index_of[gc.rhs]) \
+                                if isinstance(gc.lhs, RandomIndexedSymbol) \
+                                else (gc.rhs.key, index_of[gc.lhs])
+                        else:
+                            _, gstate = (gc.lhs.key, gc.rhs) \
+                                if isinstance(gc.lhs, RandomIndexedSymbol) \
+                                else (gc.rhs.key, gc.lhs)
 
             if any((k not in self.index_set) for k in (rv.key, min_key_rv.key)):
                 raise IndexError("The timestamps of the process are not in it's index set.")
@@ -537,6 +569,8 @@ class MarkovProcess(StochasticProcess):
             ris = []
             for ri in state2cond:
                 ris.append(ri)
+                # temp = state2cond[ri].lhs if isinstance(state2cond[ri].rhs, RandomIndexedSymbol) else state2cond[ri].rhs
+                # cset = Intersection(FiniteSet(temp), state_index)
                 cset = Intersection(state2cond[ri].as_set(), state_index)
                 if len(cset) == 0:
                     return S.Zero
@@ -597,7 +631,7 @@ class MarkovProcess(StochasticProcess):
         using StochasticStateSpaceOf in given_condition using & or And.
         """
 
-        check, mat, state_index, condition = \
+        check, mat, state_space, state_index, condition = \
             self._preprocess(condition, evaluate)
 
         if check:
@@ -611,6 +645,12 @@ class MarkovProcess(StochasticProcess):
             lhsg, rhsg = condition.lhs, condition.rhs
             if not isinstance(lhsg, RandomIndexedSymbol):
                 lhsg, rhsg = (rhsg, lhsg)
+            if isinstance(self, DiscreteMarkovChain):
+                # self will not have a valid index of if state space and trans probs weren't given in initialization
+                lhsg = lhsg if isinstance(lhsg, RandomIndexedSymbol) \
+                    else self.index_of.get(lhsg, None)
+                rhsg = rhsg if isinstance(rhsg, RandomIndexedSymbol) \
+                    else self.index_of.get(rhsg, None)
             if rhsg not in state_index:
                 raise ValueError("%s state is not in the state space."%(rhsg))
             if rv.key < lhsg.key:
@@ -618,9 +658,9 @@ class MarkovProcess(StochasticProcess):
                     "time %s < time %s"%(rv.key, rv.key))
             mat_of = TransitionMatrixOf(self, mat) if isinstance(self, DiscreteMarkovChain) else GeneratorMatrixOf(self, mat)
             cond = condition & mat_of & \
-                    StochasticStateSpaceOf(self, state_index)
+                    StochasticStateSpaceOf(self, state_space)
             if isinstance(self, DiscreteMarkovChain):
-                func = lambda s: self.probability(Eq(rv, s), cond) * expr.subs(rv, self.state_space[s])
+                func = lambda s: self.probability(Eq(rv, self.state_space[s]), cond) * expr.subs(rv, self.state_space[s])
             else:
                 func = lambda s: self.probability(Eq(rv, s), cond)*expr.subs(rv, s)
             return sum([func(s) for s in state_index])
@@ -672,27 +712,28 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
     than state names. For example, with the Sunny-Cloudy-Rainy
     model with string state names:
 
-    >>> Y = DiscreteMarkovChain("Y", ['Sunny', 'Cloudy', 'Rainy'], T)
-    >>> P(Eq(Y[3], 2), Eq(Y[1], 1)).round(2)
+    >>> states = symbols('Sunny Cloudy Rainy')
+    >>> Y = DiscreteMarkovChain("Y", states, T)
+    >>> P(Eq(Y[3], states[2]), Eq(Y[1], states[1])).round(2)
     0.36
 
     This gives the same answer as the ``[0, 1, 2]`` state space.
     Currently, there is no support for state names within probability
     and expectation statements. Here is a work-around using ``index_of``:
 
-    >>> P(Eq(Y[3], Y.index_of['Rainy']), Eq(Y[1], Y.index_of['Cloudy'])).round(2)
+    >>> P(Eq(Y[3], states[2]), Eq(Y[1], states[1])).round(2)
     0.36
 
     Symbol state names can also be used:
 
     >>> sunny, cloudy, rainy = symbols('Sunny, Cloudy, Rainy')
     >>> Y = DiscreteMarkovChain("Y", [sunny, cloudy, rainy], T)
-    >>> P(Eq(Y[3], Y.index_of[rainy]), Eq(Y[1], Y.index_of[cloudy])).round(2)
+    >>> P(Eq(Y[3], rainy), Eq(Y[1], cloudy)).round(2)
     0.36
 
     Expectations will be calculated as follows:
 
-    >>> E(Y[3], Eq(Y[1], Y.index_of[cloudy]))
+    >>> E(Y[3], Eq(Y[1], cloudy))
     0.38*Cloudy + 0.36*Rainy + 0.26*Sunny
 
     There is limited support for arbitrarily sized states:
