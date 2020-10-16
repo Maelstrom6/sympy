@@ -1,7 +1,8 @@
 import random
 
 import itertools
-from typing import Sequence as tSequence, Union as tUnion, List as tList, Tuple as tTuple
+from typing import (Sequence as tSequence, Union as tUnion, List as tList,
+                    Tuple as tTuple, overload as toverload)
 
 from sympy import (Matrix, MatrixSymbol, S, Indexed, Basic, Tuple, Range,
                    Set, And, Eq, FiniteSet, ImmutableMatrix, Integer, igcd,
@@ -1363,6 +1364,156 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         states, A, B, C = self.decompose()
         O = zeros(A.shape[0], C.shape[1])
         return states, BlockMatrix([[A, O], [B, C]]).as_explicit()
+
+    @toverload
+    def first_passage_matrix(self, t: tUnion[int, Symbol], i: None, j: None) -> ImmutableMatrix:
+        ...
+
+    @toverload
+    def first_passage_matrix(self, t: tUnion[int, Symbol], i: int, j: int) -> Expr:
+        ...
+
+    def first_passage_matrix(self, t, i=None, j=None):
+        """
+        The first passage probability, :math:`f_{ij}^{(t)}` is the probability
+        of transitioning from state i to
+        state j for the first time in t number of steps. The first passage probability
+        matrix, :math:`F^{(t)}` is a matrix with the (i,j)th element being
+        :math:`f_{ij}^{(t)}`.
+        This is a computationally expensive method especially if t is symbolic.
+
+        Parameters
+        ==========
+
+        t
+            The positive number of time steps for which to calculate the
+            first passage probability matrix. This can be an int or Symbol.
+
+        i
+            The row index of the first passage probability matrix. This should
+            be specified together with ``j`` if faster computation of a single
+            value in the matrix is needed.
+
+        j
+            The column index of the first passage probability matrix. This should
+            be specified together with ``i`` if faster computation of a single
+            value in the matrix is needed.
+
+        Returns
+        =======
+
+        Ft
+            The first passage probability matrix for time step t. If i and j are
+            specified, an expression is given intstead.
+
+        Examples
+        ========
+
+        >>> from sympy.stats import DiscreteMarkovChain
+        >>> from sympy import Matrix, S, symbols, simplify
+
+        The following can be compared with the example from the References
+
+        >>> T = Matrix([[S(2)/10, S(4)/10, S(4)/10],
+        ...             [S(3)/10, S(3)/10, S(4)/10],
+        ...             [S(5)/10, S(4)/10, S(1)/10]])
+        >>> X = DiscreteMarkovChain('X', trans_probs=T)
+        >>> X.first_passage_matrix(2)
+        Matrix([
+        [  8/25, 6/25, 6/25],
+        [29/100, 7/25, 6/25],
+        [17/100, 6/25, 9/25]])
+
+        >>> T = Matrix([[6, 4],
+        ...             [3, 7]])/10
+        >>> X = DiscreteMarkovChain('X', trans_probs=T)
+        >>> t = symbols('t', integer=True, positive=True)
+        >>> simplify(X.first_passage_matrix(t))
+        Matrix([
+        [Piecewise((3/5, Eq(t, 1)), (12*10**(-t)*7**(t - 2), True)),                                    2*3**(t - 1)*5**(-t)],
+        [                                     3*10**(-t)*7**(t - 1), Piecewise((7/10, Eq(t, 1)), (3**(t - 1)*5**(-t), True))]])
+
+        The general 2 state model for t > 1
+
+        >>> a, b = symbols('a b', positive=True)
+        >>> T = Matrix([[1-a, a],
+        ...             [b, 1-b]])
+        >>> X = DiscreteMarkovChain('X', trans_probs=T)
+        >>> t = symbols('t', integer=True, positive=True)
+        >>> simplify(simplify(X.first_passage_matrix(t)))
+        Matrix([
+        [Piecewise((1 - a, Eq(t, 1)), ((-1)**t*a*b*(b - 1)**(t - 2), True)),                                                 a*(1 - a)**(t - 1)],
+        [                                                b*(1 - b)**(t - 1), Piecewise((1 - b, Eq(t, 1)), ((-1)**t*a*b*(a - 1)**(t - 2), True))]])
+
+        Specify i, j for quicker evaluation
+
+        >>> T = Matrix([[S(1)/2, S(1)/2, 0, 0],
+        ...             [S(4)/5, S(1)/5, 0, 0],
+        ...             [S(2)/3, S(1)/3, 0, 0],
+        ...             [0, S(1)/2, S(1)/2, 0]])
+        >>> X = DiscreteMarkovChain('X', trans_probs=T)
+        >>> X.first_passage_matrix(2, 1, 1)
+        2/5
+
+        References
+        ==========
+
+        .. [1] https://scholar.uwindsor.ca/cgi/viewcontent.cgi?article=1125&context=major-papers
+        .. [2] http://maths.dur.ac.uk/stats/courses/ProbMC2H/_files/handouts/1516MarkovChains2H.pdf
+        """
+        P = self.transition_probabilities
+        n = self.number_of_states
+
+        if n == 0:
+            if (i is not None) and (j is not None):
+                return None
+            else:
+                return Matrix([[]])
+
+        js_ = list(range(n))  # the columns to loop through
+        calc_i_ne_j = True  # calculate the off-diagonals
+        calc_i_eq_j = True  # calculate the diagonals
+        if (i is not None) and (j is not None):
+            js_ = [j]
+            if i == j:
+                calc_i_ne_j = False
+            else:
+                calc_i_eq_j = False
+
+        Ft = zeros(rows=n, cols=n)  # empty matrix
+
+        # if i != j
+        if calc_i_ne_j:
+            for j in js_:
+                P0 = Matrix(P)
+                P0[0:n, j] = zeros(rows=n, cols=1)
+                F = P0 ** (t - 1) * P
+                Ft[0:n, j] = F[0:n, j]
+
+        # if i == j
+        if calc_i_eq_j:
+            for j in js_:
+                P_ = Matrix(P)
+                P_[j, 0:n] = zeros(rows=1, cols=n)
+
+                Pnew = zeros(rows=2 * n, cols=2 * n)
+                Pnew[0:n, 0:n] = P
+                Pnew[n:2 * n, n:2 * n] = P_
+                Pnew[n + j, 0:n] = P[j, 0:n]
+
+                P0 = Matrix(Pnew)
+                P0[0:2 * n, j] = zeros(rows=2 * n, cols=1)
+
+                F = P0 ** (t - 1) * Pnew
+
+                Ft[j, j] = F[n + j, j]
+
+        if (i is not None) and (j is not None):
+            return Ft[i, j]
+
+        # fix problems with simplification
+        Ft = Ft.replace(0**(t-1), Piecewise((1, Eq(t, 1)), (0, True)))
+        return Ft
 
     def sample(self):
         """

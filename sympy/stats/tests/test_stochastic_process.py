@@ -130,6 +130,19 @@ def test_DiscreteMarkovChain():
     assert Y3.canonical_form() == ([0, 1, 2], TO3)
     assert Y2.decompose() == ([0, 1, 2], TO2[0:1, 0:1], TO2[1:3, 0:1], TO2[1:3, 1:3])
     assert Y3.decompose() == ([0, 1, 2], TO3, Matrix(0, 3, []), Matrix(0, 0, []))
+    assert Y2.first_passage_matrix(1) == Y2.transition_probabilities
+    assert Y2.first_passage_matrix(2) == Matrix([[0, 0, 0],
+                                                 [S(1)/9, S(1)/12, S(1)/9],
+                                                 [S(1)/12, S(3)/16, S(1)/12]])
+    assert Y3.first_passage_matrix(1) == Y3.transition_probabilities
+    assert Y3.first_passage_matrix(2) == Matrix([[S(1)/4, S(3)/16, S(1)/4],
+                                                 [S(1)/9, S(1)/3, S(1)/9],
+                                                 [S(1)/12, S(3)/16, S(1)/12]])
+    assert Y2.first_passage_matrix(2, 2, 1) == S(3) / 16
+    assert Y2.first_passage_matrix(2, 1, 1) == S(1) / 12
+    assert Y3.first_passage_matrix(2, 2, 1) == S(3) / 16
+    assert Y3.first_passage_matrix(2, 1, 1) == S(1) / 3
+    assert (Y2.first_passage_matrix(t, 1, 2) - 3 ** -t).simplify() == 0
     TO4 = Matrix([[Rational(1, 5), Rational(2, 5), Rational(2, 5)], [Rational(1, 10), S.Half, Rational(2, 5)], [Rational(3, 5), Rational(3, 10), Rational(1, 10)]])
     Y4 = DiscreteMarkovChain('Y', trans_probs=TO4)
     w = ImmutableMatrix([[Rational(11, 39), Rational(16, 39), Rational(4, 13)]])
