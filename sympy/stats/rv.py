@@ -468,6 +468,38 @@ class IndependentProductPSpace(ProductPSpace):
 
     def compute_density(self, expr, **kwargs):
         rvs = random_symbols(expr)
+        if all(pspace(rv).is_Continuous for rv in rvs):
+            if isinstance(expr, Add):
+                terms = expr.args
+                if all(pspace_independent(a, b)
+                       for a in terms for b in terms
+                       if a != b and is_random(a) and is_random(b)):
+                    z = Dummy('z', real=True)
+                    constant = Add(*[term for term in terms if not is_random(term)])
+                    terms = [term for term in terms if is_random(term)]
+                    first_term = terms[0]
+                    terms = terms[1:]
+                    pdf = pspace(first_term).compute_density(first_term)(z-Add(*terms)-constant)
+                    for i, term in enumerate(terms):
+                        space = pspace(term)
+                        pdf = space.compute_expectation(pdf, self.values & space.values, evaluate=False, **kwargs)
+
+                    return Lambda(z, pdf)
+            elif isinstance(expr, Mul):
+                terms = expr.args
+                if all(pspace_independent(a, b)
+                       for a in terms for b in terms
+                       if a != b and is_random(a) and is_random(b)):
+                    z = Dummy('z', real=True)
+                    constant = Mul(*[term for term in terms if not is_random(term)])
+                    terms = [term for term in terms if is_random(term)]
+                    first_term = terms[0]
+                    terms = terms[1:]
+                    pdf = pspace(first_term).compute_density(first_term)(z/(Mul(*terms)*constant))
+                    for i, term in enumerate(terms):
+                        space = pspace(term)
+                        pdf = space.compute_expectation(pdf, self.values & space.values, evaluate=False, **kwargs)
+                    return Lambda(z, pdf)
         if any(pspace(rv).is_Continuous for rv in rvs):
             z = Dummy('z', real=True)
             expr = self.compute_expectation(DiracDelta(expr - z),
