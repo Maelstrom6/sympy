@@ -1276,15 +1276,15 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         >>> T = Matrix([[0, 1],
         ...             [1, 0]])
         >>> X = DiscreteMarkovChain('X', trans_probs=T)
-        >>> X.limiting_distribution
-        Matrix([[AccumBounds(0, 1)*p_0[0, 0] + AccumBounds(0, 1)*p_0[0, 1], AccumBounds(0, 1)*p_0[0, 0] + AccumBounds(0, 1)*p_0[0, 1]]])
+        >>> simplify(X.limiting_distribution)
+        Matrix([[AccumBounds(-1, 0)*(p_0[0, 1] - 1) + AccumBounds(0, 1)*p_0[0, 1], AccumBounds(-1, 0)*(p_0[0, 1] - 1) + AccumBounds(0, 1)*p_0[0, 1]]])
 
         ``limiting_distribution`` assumes  a symbolic
         initial probability vector but you can specify
         it using ``limiting_dist`` instead.
 
         >>> X.limiting_dist(Matrix([[S(1)/2, S(1)/2]]))
-        Matrix([[1/2, 1/2]])
+        Matrix([[AccumBounds(0, 1), AccumBounds(0, 1)]])
 
         >>> X.limiting_dist(Matrix([[1, 0]]))
         Matrix([[AccumBounds(0, 1), AccumBounds(0, 1)]])
@@ -1368,6 +1368,7 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         p0 = Matrix(1, n, lambda i, j: p0[i, indexes[j]])  # shuffle
         pn = (p0 * Pn).as_explicit().as_mutable()
         pn = Matrix(1, n, lambda i, j: pn[i, inv_indexes[j]])  # shuffle back
+        pn = pn.subs(p0[0, 0], 1-sum(p0[0, 1:]))
 
         """
         pn = (p0 * trans_probs ** _n).as_explicit().as_mutable()  # working but slow
