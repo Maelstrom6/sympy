@@ -10,7 +10,8 @@ from sympy import (Matrix, MatrixSymbol, S, Indexed, Basic, Tuple, Range,
                    Union, Expr, Function, exp, cacheit, sqrt, pi, gamma,
                    Ge, Piecewise, Symbol, NonSquareMatrixError, EmptySet,
                    ceiling, MatrixBase, ConditionSet, ones, zeros, Identity,
-                   Rational, Lt, Gt, Le, Ne, BlockMatrix, Sum)
+                   Rational, Lt, Gt, Le, Ne, BlockMatrix, Sum, BlockDiagMatrix,
+                   AccumBounds, limit_seq)
 from sympy.core.relational import Relational
 from sympy.logic.boolalg import Boolean
 from sympy.utilities.exceptions import SymPyDeprecationWarning
@@ -1222,12 +1223,164 @@ class DiscreteMarkovChain(DiscreteTimeStochasticProcess, MarkovProcess):
         return self.stationary_distribution()
 
     @property
-    def limiting_distribution(self):
+    def limiting_distribution(self) -> tUnion[ImmutableMatrix, ConditionSet, Lambda]:
         """
-        The fixed row vector is the limiting
-        distribution of a discrete Markov chain.
+        A wrapper for ``limiting_dist``.
         """
-        return self.fixed_row_vector()
+        return self.limiting_dist()
+
+    def limiting_dist(self, p0: Matrix = None) -> tUnion[ImmutableMatrix, ConditionSet, Lambda]:
+        """
+        The limiting distribution is the row vector
+        equal to :math:`lim_{t \\rightarrow \\infty} p^{(n)}`.
+        where :math:`p^{(n)}` is the marginal state
+        probability vector at time n.
+
+        This is equal to the stationary distribution if the
+        Markov Chain is finite, irreducible and aperiodic.
+
+        Examples
+        ========
+
+        >>> from sympy.stats import DiscreteMarkovChain
+        >>> from sympy import Matrix, S, simplify
+
+        An irreducible aperiodic finite Markov Chain
+
+        >>> T = Matrix([[S(1)/2, S(1)/2, 0],
+        ...             [S(2)/5, S(1)/5, S(2)/5],
+        ...             [S(1)/5, S(3)/5, S(1)/5]])
+        >>> X = DiscreteMarkovChain('X', trans_probs=T)
+        >>> X.limiting_distribution
+        Matrix([[2/5, 2/5, 1/5]])
+
+        A reducible aperiodic Markov Chain
+        >>> T = Matrix([[S(1)/2, S(1)/2, 0],
+        ...             [S(4)/5, S(1)/5, 0],
+        ...             [1, 0, 0]])
+        >>> X = DiscreteMarkovChain('X', trans_probs=T)
+        >>> simplify(X.limiting_distribution)
+        Matrix([[8/13, 5/13, 0]])
+
+        In some cases, the limting distribution
+        does not exist (see Example 10.4.4 from [4]).
+        In this case, an ``AccumBounds`` will often
+        be present in the solution. This is for a
+        similar reason why SymPy chooses to have
+        ``lim_seq((-1)**n) == AccumBounds(-1, 1)``.
+
+        In this case, the limiting distribution is not the
+        same as the stationary distribution and
+        it depends on the inital choice for :math:`p^{(0)}`:
+
+        >>> T = Matrix([[0, 1],
+        ...             [1, 0]])
+        >>> X = DiscreteMarkovChain('X', trans_probs=T)
+        >>> X.limiting_distribution
+        Matrix([[AccumBounds(0, 1)*p_0[0, 0] + AccumBounds(0, 1)*p_0[0, 1], AccumBounds(0, 1)*p_0[0, 0] + AccumBounds(0, 1)*p_0[0, 1]]])
+
+        ``limiting_distribution`` assumes  a symbolic
+        initial probability vector but you can specify
+        it using ``limiting_dist`` instead.
+
+        >>> X.limiting_dist(Matrix([[S(1)/2, S(1)/2]]))
+        Matrix([[1/2, 1/2]])
+
+        >>> X.limiting_dist(Matrix([[1, 0]]))
+        Matrix([[AccumBounds(0, 1), AccumBounds(0, 1)]])
+
+        References
+        ==========
+
+        .. [1] https://www.probabilitycourse.com/chapter11/11_2_6_stationary_and_limiting_distributions.php
+        .. [2] https://galton.uchicago.edu/~yibi/teaching/stat317/2014/Lectures/Lecture4_6up.pdf
+        .. [3] https://stats.stackexchange.com/questions/48262/what-is-the-difference-between-limiting-and-stationary-distributions
+        .. [4] https://web.ma.utexas.edu/users/gordanz/notes/stationary_distributions_color.pdf
+
+        See Also
+        ========
+
+        sympy.stats.stochastic_processes_types.DiscreteMarkovChain.limiting_distribution
+        sympy.stats.stochastic_processes_types.DiscreteMarkovChain.stationary_distribution
+        """
+        trans_probs = self.transition_probabilities
+        n = self.number_of_states
+
+        if isinstance(trans_probs, MatrixSymbol):
+            return self.stationary_distribution()
+        if n == 0:
+            return Matrix([[]])
+
+        tuples = self.communication_classes()
+        classes, recurrent, periods = list(zip(*tuples))
+
+        # If irreducible and aperiodic.
+        if len(classes) == 1 and periods[0] == 1:
+            return self.stationary_distribution()
+
+        # Technically, the limiting distribution no longer exists.
+        # All of the following will be fully dependent on the initial state
+        # vector. So the limiting distribution is not well-defined.
+        if p0 is None:
+            p0 = MatrixSymbol('p_0', 1, n)
+        _n = Dummy("n", positive=True, integer=True)
+
+        # We separate the transition matrix into smaller ones
+        # so that diagonalization does not need to take
+        # place on one large matrix.
+        r_classes = [states for i, states in enumerate(classes) if recurrent[i]]
+        r_states = []
+        t_states = []
+        for states, recurrent, period in tuples:
+            if recurrent:
+                r_states += states
+            else:
+                t_states += states
+        states = r_states + t_states
+        indexes = [self.index_of[state] for state in states]
+        inv_indexes = {indexes[i]: i for i in range(len(indexes))}
+
+        matrices = []
+        offset = 0
+        for class_ in r_classes:
+            matrices.append(Matrix(len(class_), len(class_),
+                                   lambda i, j: trans_probs[
+                                       indexes[i + offset], indexes[j + offset]]) ** _n)
+            offset += len(class_)
+
+        for i, matrix in enumerate(matrices):
+            for row in range(matrix.shape[0]):
+                for col in range(matrix.shape[1]):
+                    matrices[i][row, col] = matrices[i][row, col].replace((-1) ** _n,
+                                                                          AccumBounds(-1, 1))
+                    matrices[i][row, col] = limit_seq(matrices[i][row, col], _n)
+        Q = BlockDiagMatrix(*matrices)
+
+        _, _, B, _ = self.decompose()
+        if len(t_states) > 0:  # use typical fundamental matrix definition
+            M = self.fundamental_matrix()
+        else:
+            M = zeros(len(t_states), len(t_states))
+        MBQ = M * B * Q
+        Pn = BlockMatrix([[Q, zeros(len(r_states), len(t_states))],
+                          [MBQ, zeros(len(t_states), len(t_states))]])
+
+        p0 = Matrix(1, n, lambda i, j: p0[i, indexes[j]])  # shuffle
+        pn = (p0 * Pn).as_explicit().as_mutable()
+        pn = Matrix(1, n, lambda i, j: pn[i, inv_indexes[j]])  # shuffle back
+
+        """
+        pn = (p0 * trans_probs ** _n).as_explicit().as_mutable()  # working but slow
+        for row in range(pn.shape[0]):
+            for col in range(pn.shape[1]):
+                # lim_seq does not always identify what (-1)**_n becomes
+                # when there are symbolic multiples. So we do so ourselves.
+                pn[row, col] = pn[row, col].replace((-1) ** _n, AccumBounds(-1, 1))
+                pn[row, col] = limit_seq(pn[row, col], _n)
+        pn = Matrix(1, n, lambda i, j: pn[i, inv_indexes[j]])
+        """
+
+        return pn.as_immutable()
 
     def decompose(self) -> tTuple[tList[Basic], ImmutableMatrix, ImmutableMatrix, ImmutableMatrix]:
         """

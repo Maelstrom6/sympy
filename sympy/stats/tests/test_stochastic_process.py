@@ -127,6 +127,8 @@ def test_DiscreteMarkovChain():
     assert Y3.canonical_form() == ([0, 1, 2], TO3)
     assert Y2.decompose() == ([0, 1, 2], TO2[0:1, 0:1], TO2[1:3, 0:1], TO2[1:3, 1:3])
     assert Y3.decompose() == ([0, 1, 2], TO3, Matrix(0, 3, []), Matrix(0, 0, []))
+    assert Y2.stationary_distribution() * TO2 == Y2.stationary_distribution() == Y2.limiting_dist(Matrix([[1, 1, 0]])/2)
+    assert Y3.stationary_distribution() * TO3 == Y3.stationary_distribution() == Y3.limiting_dist(Matrix([[1, 1, 0]])/2)
     TO4 = Matrix([[Rational(1, 5), Rational(2, 5), Rational(2, 5)], [Rational(1, 10), S.Half, Rational(2, 5)], [Rational(3, 5), Rational(3, 10), Rational(1, 10)]])
     Y4 = DiscreteMarkovChain('Y', trans_probs=TO4)
     w = ImmutableMatrix([[Rational(11, 39), Rational(16, 39), Rational(4, 13)]])
@@ -148,6 +150,39 @@ def test_DiscreteMarkovChain():
                                                             [Rational(2, 25), Rational(21, 25), Rational(2, 25)],
                                                             [Rational(-14, 75), Rational(1, 25), Rational(86, 75)]])
 
+    T = Matrix([[10, 10, 0, 0],
+                [10, 10, 0, 0],
+                [0, 0, 5, 15],
+                [0, 0, 4, 16]]) / 20
+    X = DiscreteMarkovChain("X", ["A", "B", "C", "D"], T)
+    dist = X.limiting_distribution
+    p = dist.free_symbols.pop()
+    assert dist == Matrix([[p[0, 0]/2 + p[0, 1]/2, p[0, 0]/2 + p[0, 1]/2,
+                            4*p[0, 2]/19 + 4 * p[0, 3]/19,
+                            15*p[0, 2]/19 + 15*p[0, 3]/19]])
+
+    # make sure it works on the same reshuffled matrix
+    T = Matrix([[10, 0, 10, 0],
+                [0, 5, 0, 15],
+                [10, 0, 10, 0],
+                [0, 4, 0, 16]]) / 20
+    X = DiscreteMarkovChain("X", ["A", "B", "C", "D"], T)
+    dist = X.limiting_distribution
+    p = dist.free_symbols.pop()
+    assert dist == Matrix([[p[0, 0] / 2 + p[0, 2] / 2, 4 * p[0, 1] / 19 + 4 * p[0, 3] / 19,
+                            p[0, 0] / 2 + p[0, 2] / 2, 15 * p[0, 1] / 19 + 15 * p[0, 3] / 19]])
+
+    T = Matrix([[2, 0, 0, 0, 0],
+                [1, 0, 1, 0, 0],
+                [0, 1, 0, 1, 0],
+                [0, 0, 1, 0, 1],
+                [0, 0, 0, 0, 2]]) / 2
+    Y = DiscreteMarkovChain("X", [9, 8, 7, 6, 5], T)
+    dist = Y.limiting_distribution
+    p = dist.free_symbols.pop()
+    assert dist == Matrix([[p[0, 0] + 3 * p[0, 1] / 4 + p[0, 2] / 2 + p[0, 3] / 4, 0, 0, 0,
+                            p[0, 1] / 4 + p[0, 2] / 2 + 3 * p[0, 3] / 4 + p[0, 4]]])
+
     # test for zero-sized matrix functionality
     X = DiscreteMarkovChain('X', trans_probs=Matrix([[]]))
     assert X.number_of_states == 0
@@ -155,6 +190,7 @@ def test_DiscreteMarkovChain():
     assert X.communication_classes() == []
     assert X.canonical_form() == ([], Matrix([[]]))
     assert X.decompose() == ([], Matrix([[]]), Matrix([[]]), Matrix([[]]))
+    assert X.limiting_distribution == Matrix([[]])
     assert X.is_regular() == False
     assert X.is_ergodic() == False
 
